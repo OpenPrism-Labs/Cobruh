@@ -1,0 +1,5 @@
+# ResNet-50 model configuration
+name: resnet
+layers: 50
+pretrained: false
+num_classes: 1000

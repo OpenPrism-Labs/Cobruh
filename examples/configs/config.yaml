@@ -1,0 +1,17 @@
+# Example configuration file
+# This demonstrates hierarchical config with defaults
+
+defaults:
+  - model: resnet50
+  - optimizer: adam
+
+# Training parameters
+batch_size: 32
+epochs: 100
+seed: 42
+
+# Data configuration
+data:
+  path: /data/imagenet
+  num_workers: 4
+  shuffle: true
