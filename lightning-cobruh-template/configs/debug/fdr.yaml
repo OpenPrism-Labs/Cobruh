@@ -1,0 +1,18 @@
+# @package _global_
+
+# Fast dev run (runs 1 batch of train, val, and test)
+
+defaults:
+  - override /trainer: default.yaml
+
+trainer:
+  max_epochs: 1
+  accelerator: cpu
+  devices: 1
+  fast_dev_run: True
+
+extras:
+  ignore_warnings: False
+  enforce_tags: False
+
+tags: ["debug", "fast_dev_run"]

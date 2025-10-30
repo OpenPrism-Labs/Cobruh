@@ -204,6 +204,27 @@ For detailed documentation, see the `llm_docs/` directory:
 Check out the `examples/` directory for complete examples:
 - `simple_app.py` - Basic application with config composition
 
+### Lightning-Cobruh Template 🚀⚡
+
+A comprehensive PyTorch Lightning project template using Cobruh for configuration management!
+
+**Features:**
+- Complete ML project structure
+- PyTorch Lightning integration
+- Working MNIST example
+- Experiment tracking
+- GPU/CPU training support
+- Comprehensive testing
+
+**Quick Start:**
+```bash
+cd lightning-cobruh-template
+pip install -r requirements.txt
+python src/train.py
+```
+
+📚 **Full Documentation:** See [LIGHTNING_TEMPLATE.md](LIGHTNING_TEMPLATE.md) and the `lightning-cobruh-template/` directory for complete documentation and examples.
+
 ## Comparison with Hydra
 
 Cobruh is inspired by [Hydra](https://hydra.cc/) and aims to provide a similar API while being:

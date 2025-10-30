@@ -1,0 +1,18 @@
+# Paths configuration
+# These paths are used throughout the project
+
+# path to root directory
+root_dir: ${oc.env:PROJECT_ROOT,${cobruh:runtime.cwd}}
+
+# path to data directory
+data_dir: ${paths.root_dir}/data/
+
+# path to logging directory
+log_dir: ${paths.root_dir}/logs/
+
+# path to output directory, created dynamically by cobruh
+# path generation pattern is specified in configs/cobruh/default.yaml
+output_dir: ${cobruh:runtime.output_dir}
+
+# path to working directory
+work_dir: ${cobruh:runtime.cwd}

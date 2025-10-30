@@ -1,0 +1,21 @@
+# @package _global_
+
+# Default debug config
+# Runs 1 epoch in debug mode
+
+defaults:
+  - override /trainer: default.yaml
+
+trainer:
+  max_epochs: 1
+  accelerator: cpu
+  devices: 1
+
+extras:
+  ignore_warnings: False
+  enforce_tags: False
+
+tags: ["debug"]
+
+paths:
+  log_dir: ${paths.root_dir}/logs/debugs
