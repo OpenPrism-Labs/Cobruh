@@ -1,252 +1,208 @@
 # Cobruh
 
-A hierarchical configuration management framework for Python applications, inspired by Facebook's Hydra.
+Cobruh composes ordinary Python mappings from a project-owned YAML tree. Version 0.2 uses one explicit `Cobruh` project object: no singleton state, decorator, config container, or compatibility layer.
 
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+Cobruh supports CPython 3.10, 3.11, 3.12, 3.13, and 3.14.
 
-## Features
+## Install
 
-- 🏗️ **Hierarchical Configuration** - Split configs into reusable groups
-- 🔄 **Composable** - Merge multiple configs dynamically
-- 🔒 **Type-Safe** - Validate using Python dataclasses
-- 🖥️ **CLI Overrides** - Override any config value from command line
-- 🔗 **Interpolation** - Reference config values and environment variables
-- ⚡ **Object Instantiation** - Create Python objects from config
+Core composition and runtime support require only PyYAML:
 
-## Installation
-
-```bash
+```console
 pip install cobruh
 ```
 
-Or install from source:
+Install the trusted local MCP adapter when a coding agent needs configuration authority:
 
-```bash
-git clone https://github.com/OpenPrism-Labs/Cobruh.git
-cd Cobruh
-pip install -e .
+```console
+pip install 'cobruh[agentic]'
 ```
 
-## Quick Start
+## Python API
 
-### 1. Create Your Configuration
-
-Create a `configs` directory with your YAML files:
-
-```yaml
-# configs/config.yaml
-defaults:
-  - model: resnet50
-  - optimizer: adam
-
-batch_size: 32
-epochs: 100
-```
-
-```yaml
-# configs/model/resnet50.yaml
-name: resnet
-layers: 50
-pretrained: false
-```
-
-```yaml
-# configs/optimizer/adam.yaml
-name: adam
-lr: 0.001
-betas: [0.9, 0.999]
-```
-
-### 2. Use in Your Application
+The package exports exactly six names: `Cobruh`, `CobruhError`, `ConfigError`, `OverrideError`, `TargetError`, and `__version__`.
 
 ```python
-import cobruh
-from cobruh import DictConfig
+from cobruh import Cobruh
 
-@cobruh.main(config_path="configs", config_name="config")
-def train(cfg: DictConfig) -> None:
-    print(f"Model: {cfg.model.name}")
-    print(f"Optimizer: {cfg.optimizer.name}")
-    print(f"Batch size: {cfg.batch_size}")
-    
-    # Your training code here...
-
-if __name__ == "__main__":
-    train()
-```
-
-### 3. Run with CLI Overrides
-
-```bash
-# Use default config
-python app.py
-
-# Override specific values
-python app.py batch_size=64 optimizer.lr=0.01
-
-# Switch entire config groups
-python app.py model=vgg optimizer=sgd
-```
-
-## Advanced Usage
-
-### Programmatic Composition
-
-```python
-import cobruh
-
-# Initialize
-cobruh.initialize(config_path="configs")
-
-# Compose configuration
-cfg = cobruh.compose(
-    config_name="config",
-    overrides=["model=resnet50", "batch_size=128"]
+project = Cobruh("configs", project_root=".")
+print(project.catalog())
+config = project.compose(
+    "config",
+    overrides=["model=vgg", "model.layers=19", "+run.debug=true"],
 )
-
-print(cfg.model.name)  # resnet
+service = project.instantiate(config["service"])
 ```
 
-### Object Instantiation
+Both roots resolve when `Cobruh` is constructed. `config_root` must be an existing directory contained by `project_root`; the project root defaults to the config root's parent. Every method is scoped to that object and keeps no process-global configuration state.
 
-```python
-from cobruh.utils import instantiate
+### YAML and defaults
 
-# Config with _target_
-config = {
-    "_target_": "torch.optim.Adam",
-    "lr": 0.001,
-    "betas": [0.9, 0.999]
+Every source is a UTF-8 `.yaml` or `.yml` mapping of at most 1 MiB. An empty document means `{}`. Logical names may include or omit the extension. Traversal, source symlinks that escape the root, duplicate `.yaml`/`.yml` variants, malformed YAML, and non-mapping document roots are errors.
+
+`defaults` accepts only three forms:
+
+```yaml
+defaults:
+  - base
+  - _self_
+  - model: resnet50
+```
+
+- `_self_` inserts the current file at that position. If omitted, the current file composes last.
+- A string includes a root-relative config.
+- A one-key mapping selects `<group>/<option>.yaml` and nests it under the group key.
+
+Entries compose left to right. Mappings deep-merge; lists and scalars replace. Includes may themselves have defaults. Missing sources and cycles report the include chain.
+
+Cobruh deliberately does not implement optional or null defaults, override-default syntax, multirun, ConfigStore, structured dataclasses, output directories, or plugins.
+
+### Overrides
+
+Python, CLI, MCP, examples, and bundled skills share one sequential grammar:
+
+- `path=value` replaces an existing dotted path.
+- `+path=value` creates a missing path and fails if it already exists.
+- `group=option` selects an option when `<config_root>/<group>` is a group directory.
+
+Values use `yaml.safe_load`. Sequential application means `model=vgg` can be followed by `model.layers=19`. Unknown group options, invalid paths, missing replacement paths, and duplicate additions are errors.
+
+### Interpolation
+
+Interpolation runs after defaults and overrides:
+
+- `${path.to.value}`
+- `${env:NAME}`
+- `${env:NAME,default}`
+
+An exact reference token preserves a scalar, list, or mapping type. A token embedded in text stringifies its value. `compose(resolve=False)` leaves expressions unchanged. Missing values and interpolation cycles are errors with their key chain.
+
+### Target runtime
+
+A target mapping requires `_target_`. `_args_` is an optional sequence, `_partial_` an optional boolean, and `_recursive_` an optional boolean that defaults to true.
+
+```yaml
+service:
+  _target_: my_project.service.Service
+  _args_: [primary]
+  timeout: 10
+  client:
+    _target_: my_project.client.Client
+```
+
+Target-bearing child mappings and lists instantiate recursively. `_recursive_: false` passes nested values unchanged. Explicit positional arguments to `instantiate()` replace `_args_`; explicit keywords override configured values. Project-local imports are available only during resolution and construction, and the original `sys.path` is restored afterward.
+
+> **Trust boundary:** target instantiation imports Python and calls configured code. The MCP `instantiate_config` tool therefore permits arbitrary code execution with the server process's authority. Run it only for trusted local agents, trusted repositories, and an explicit user intent to execute the configured target.
+
+## CLI
+
+All machine results go to stdout; diagnostics go to stderr. Expected user and configuration errors exit with status 2.
+
+```console
+cobruh catalog --root configs --project-root .
+cobruh compose config --root configs --project-root . --set model=vgg optimizer.lr=0.01 --format json
+cobruh compose config --root configs --no-resolve --format yaml
+cobruh instantiate config --root configs --project-root . --node service
+```
+
+Instantiation prints a bounded envelope containing the fully qualified result type, at most 4096 characters of `repr`, and `value` only when JSON serialization succeeds.
+
+## Trusted local MCP server
+
+The server exposes exactly:
+
+- Tools: `list_configs`, `read_config_source`, `write_config_source`, `compose_config`, `instantiate_config`
+- Resources: `cobruh://catalog`, `cobruh://skills`
+- Prompts: `author_config`, `debug_config`
+
+Source replacement is atomic and requires the SHA-256 returned by `read_config_source`; creation omits the hash. The server rejects absolute paths, traversal, non-YAML paths, symlinks, malformed/non-mapping YAML, stale hashes, and sources over 1 MiB.
+
+Use absolute paths in host registration. These examples assume the executable is `/absolute/project/.venv/bin/cobruh`, the project is `/absolute/project`, and configs are `/absolute/project/configs`.
+
+### Codex
+
+```toml
+[mcp_servers.cobruh]
+command = "/absolute/project/.venv/bin/cobruh"
+args = ["mcp", "--root", "/absolute/project/configs", "--project-root", "/absolute/project"]
+```
+
+### Claude Code
+
+```console
+claude mcp add cobruh -- /absolute/project/.venv/bin/cobruh mcp --root /absolute/project/configs --project-root /absolute/project
+```
+
+### Cursor
+
+Create `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "cobruh": {
+      "command": "/absolute/project/.venv/bin/cobruh",
+      "args": ["mcp", "--root", "/absolute/project/configs", "--project-root", "/absolute/project"]
+    }
+  }
 }
-
-# Instantiate the object
-optimizer = instantiate(config, params=model.parameters())
 ```
 
-### Config Store
+### VS Code / GitHub Copilot
 
-```python
-from dataclasses import dataclass
-from cobruh import ConfigStore
+Create `.vscode/mcp.json` without credentials:
 
-@dataclass
-class ModelConfig:
-    name: str = "resnet"
-    layers: int = 50
-
-# Register config
-cs = ConfigStore.instance()
-cs.store(name="base_model", node=ModelConfig)
+```json
+{
+  "servers": {
+    "cobruh": {
+      "type": "stdio",
+      "command": "/absolute/project/.venv/bin/cobruh",
+      "args": ["mcp", "--root", "/absolute/project/configs", "--project-root", "/absolute/project"]
+    }
+  }
+}
 ```
 
-## Python Version Support
+### Streamable HTTP
 
-Cobruh supports Python 3.10 and later versions:
-- ✅ Python 3.10
-- ✅ Python 3.11
-- ✅ Python 3.12
-- ✅ Python 3.13+
+```console
+cobruh mcp --root /absolute/project/configs --project-root /absolute/project --transport streamable-http --host 127.0.0.1 --port 8000
+```
+
+The endpoint is `http://127.0.0.1:8000/mcp`. Only loopback hosts are accepted; Cobruh refuses to expose this unauthenticated code-execution server on a network interface.
+
+## Portable Agent Skills
+
+Three skills ship inside the wheel: `cobruh-config`, `cobruh-runtime`, and `cobruh-mcp`.
+
+```console
+cobruh skills list
+cobruh skills install --agent codex --scope project --project /absolute/project
+cobruh skills install --agent all --scope user
+cobruh skills install --agent cursor --skill cobruh-config --force
+```
+
+`--agent` is required and accepts `codex`, `claude`, `copilot`, `cursor`, or `all`. Project scope is the default. Destinations are:
+
+| Agent | Project | User |
+|---|---|---|
+| Codex | `.agents/skills` | `~/.agents/skills` |
+| Claude Code | `.claude/skills` | `~/.claude/skills` |
+| GitHub Copilot | `.github/skills` | `~/.copilot/skills` |
+| Cursor | `.cursor/skills` | `~/.cursor/skills` |
+
+All three skills install unless repeated `--skill` options filter them. Identical content is a no-op. Differing content fails unless `--force` replaces only that named skill directory. Multi-agent installation preflights every destination and rolls back mutation failures.
 
 ## Development
 
-### Setup Development Environment
-
-```bash
-# Clone the repository
-git clone https://github.com/OpenPrism-Labs/Cobruh.git
-cd Cobruh
-
-# Install with dev dependencies
-pip install -e ".[dev]"
+```console
+uv venv .venv --python 3.13
+uv pip install --python .venv/bin/python -e '.[dev,agentic]'
+.venv/bin/python -m pytest
+.venv/bin/python -m ruff format --check src tests examples
+.venv/bin/python -m ruff check src tests examples
+.venv/bin/python -m mypy src/cobruh
 ```
 
-### Run Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=cobruh --cov-report=html
-
-# Run specific test file
-pytest tests/unit/test_dictconfig.py
-```
-
-### Code Quality
-
-```bash
-# Format code
-black src tests
-
-# Sort imports
-isort src tests
-
-# Lint
-ruff check src tests
-
-# Type check
-mypy src
-```
-
-## Documentation
-
-For detailed documentation, see the `llm_docs/` directory:
-
-- [Architecture](llm_docs/architecture/ARCHITECTURE.md) - System design and algorithms
-- [API Specification](llm_docs/api/API_SPECIFICATION.md) - Complete API reference
-- [Implementation Roadmap](llm_docs/implementation/IMPLEMENTATION_ROADMAP.md) - Development plan
-- [Testing Strategy](llm_docs/testing/TESTING_STRATEGY.md) - Testing approach
-
-## Examples
-
-Check out the `examples/` directory for complete examples:
-- `simple_app.py` - Basic application with config composition
-
-### Lightning-Cobruh Template 🚀⚡
-
-A comprehensive PyTorch Lightning project template using Cobruh for configuration management!
-
-**Features:**
-- Complete ML project structure
-- PyTorch Lightning integration
-- Working MNIST example
-- Experiment tracking
-- GPU/CPU training support
-- Comprehensive testing
-
-**Quick Start:**
-```bash
-cd lightning-cobruh-template
-pip install -r requirements.txt
-python src/train.py
-```
-
-📚 **Full Documentation:** See [LIGHTNING_TEMPLATE.md](LIGHTNING_TEMPLATE.md) and the `lightning-cobruh-template/` directory for complete documentation and examples.
-
-## Comparison with Hydra
-
-Cobruh is inspired by [Hydra](https://hydra.cc/) and aims to provide a similar API while being:
-- Lighter weight
-- Easier to understand
-- More focused on core configuration management
-
-If you're familiar with Hydra, you'll feel right at home with Cobruh!
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Inspired by [Facebook's Hydra](https://hydra.cc/)
-- Built on top of [OmegaConf](https://github.com/omry/omegaconf)
-
-## Project Status
-
-🚧 **Alpha** - This project is in early development. APIs may change.
+The repository CI repeats behavior tests on CPython 3.10 through 3.14 and validates the built wheel outside the checkout.
