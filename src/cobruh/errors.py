@@ -9,6 +9,10 @@ class ConfigError(CobruhError):
     """Configuration source, composition, or interpolation failure."""
 
 
+class IntegrationError(CobruhError):
+    """Optional experiment-tracker integration failure."""
+
+
 class OverrideError(ConfigError):
     """Invalid or inapplicable configuration override."""
 

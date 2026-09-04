@@ -34,6 +34,16 @@ dependencies = [
 agentic = [
     "mcp>=2,<3",
 ]
+wandb = [
+    "wandb>=0.19,<1",
+]
+aim = [
+    "aim>=3.29,<4; python_version < '3.13'",
+]
+tracking = [
+    "wandb>=0.19,<1",
+    "aim>=3.29,<4; python_version < '3.13'",
+]
 dev = [
     "pytest>=8.4,<9",
     "pytest-cov>=6,<8",

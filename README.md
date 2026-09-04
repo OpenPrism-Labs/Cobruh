@@ -184,6 +184,51 @@ Project-local imports work without permanently changing the process: Cobruh prep
 > [!CAUTION]
 > Target instantiation executes configured Python code. Use it only with trusted configuration and explicit intent. The MCP runtime tool carries the same authority as its server process.
 
+## Native experiment tracking
+
+Cobruh passes composed configurations into W&B and Aim and returns each tracker's native run object. Install either integration or both:
+
+```console
+pip install 'cobruh[wandb]'
+pip install 'cobruh[aim]'
+pip install 'cobruh[tracking]'
+```
+
+W&B supports Cobruh's full CPython 3.10–3.14 range. Aim 3.29's required `aimrocks` package publishes wheels through CPython 3.12, so the `aim` dependency is installed only on CPython 3.10–3.12; `init_aim` reports this limitation explicitly on newer interpreters.
+
+### Weights & Biases
+
+```python
+from cobruh import Cobruh, init_wandb
+
+config = Cobruh("configs", project_root=".").compose(
+    overrides=["model=vgg", "optimizer.lr=0.01"],
+)
+
+with init_wandb(config, project="image-classification") as run:
+    run.log({"train/loss": 0.42, "epoch": 1})
+```
+
+`init_wandb` forwards every keyword argument to `wandb.init(config=...)`. Offline mode, run IDs, resuming, grouping, tags, and native logging therefore work without a second Cobruh abstraction.
+
+### Aim
+
+```python
+from cobruh import Cobruh, init_aim
+
+config = Cobruh("configs", project_root=".").compose(
+    overrides=["model=vgg", "optimizer.lr=0.01"],
+)
+
+run = init_aim(config, repo=".aim", experiment="image-classification")
+try:
+    run.track(0.42, name="loss", step=1, context={"subset": "train"})
+finally:
+    run.close()
+```
+
+`init_aim` stores the composed configuration under Aim's conventional `hparams` key and forwards every other keyword argument to `aim.Run`. Use `config_key="config"` to choose another metadata key. The returned object is the native Aim `Run`.
+
 ## Built for agentic configuration work
 
 A coding agent should not guess which files exist, overwrite concurrent changes, or execute targets just to understand a config. Cobruh gives it a purpose-built local protocol:
@@ -384,20 +429,23 @@ Reserved fields never reach the constructor. Explicit positional arguments repla
 
 ## Python API
 
-Cobruh exports exactly six names:
+Cobruh exports exactly nine names:
 
 ```python
 from cobruh import (
     Cobruh,
     CobruhError,
     ConfigError,
+    IntegrationError,
     OverrideError,
     TargetError,
+    init_aim,
+    init_wandb,
     __version__,
 )
 ```
 
-`CobruhError` is the common base. `OverrideError` derives from `ConfigError`. `TargetError` covers target resolution and construction.
+`CobruhError` is the common base. `OverrideError` derives from `ConfigError`. `TargetError` covers target resolution and construction. `IntegrationError` covers invalid tracking input and missing optional tracker dependencies; errors raised by an installed tracker remain native.
 
 ## Development
 

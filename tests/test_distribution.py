@@ -17,8 +17,11 @@ def test_public_api_is_exact() -> None:
         "Cobruh",
         "CobruhError",
         "ConfigError",
+        "IntegrationError",
         "OverrideError",
         "TargetError",
+        "init_aim",
+        "init_wandb",
         "__version__",
     ]
     for name in cobruh.__all__:
@@ -60,6 +63,7 @@ def test_wheel_contains_runtime_modules_typing_and_all_skills(tmp_path: Path) ->
         assert "cobruh/project.py" in names
         assert "cobruh/composition.py" in names
         assert "cobruh/runtime.py" in names
+        assert "cobruh/tracking.py" in names
         assert "cobruh/cli.py" in names
         assert "cobruh/mcp_server.py" in names
         assert "cobruh/skills.py" in names
@@ -71,3 +75,10 @@ def test_wheel_contains_runtime_modules_typing_and_all_skills(tmp_path: Path) ->
         assert "Requires-Python: <3.15,>=3.10" in metadata
         assert "Requires-Dist: PyYAML<7,>=6.0.3" in metadata
         assert 'Requires-Dist: mcp<3,>=2; extra == "agentic"' in metadata
+        assert 'Requires-Dist: wandb<1,>=0.19; extra == "wandb"' in metadata
+        assert 'Requires-Dist: aim<4,>=3.29; python_version < "3.13" and extra == "aim"' in metadata
+        assert 'Requires-Dist: wandb<1,>=0.19; extra == "tracking"' in metadata
+        assert (
+            'Requires-Dist: aim<4,>=3.29; python_version < "3.13" and extra == "tracking"'
+            in metadata
+        )

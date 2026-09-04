@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added optional native W&B and Aim experiment-tracking integrations for composed configurations.
+
 ## 0.2.0
 
 - Replaced global wrapper APIs with the explicit `Cobruh` project object and ordinary Python mappings.
