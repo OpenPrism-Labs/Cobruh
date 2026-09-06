@@ -37,9 +37,9 @@ config = project.compose("config", overrides=["model=vgg", "optimizer.lr=0.01"])
 
 - Deterministic YAML composition
 - Ordinary Python dictionaries
-- Sequential, typed overrides
+- Two-stage typed overrides
 - Environment and config interpolation
-- Recursive target construction
+- Recursive allowlisted target construction
 - Zero global configuration state
 
 </td>
@@ -48,8 +48,8 @@ config = project.compose("config", overrides=["model=vgg", "optimizer.lr=0.01"])
 ### For your coding agent
 
 - Discoverable MCP tools and resources
-- Source provenance on every composition
-- SHA-256 guarded writes
+- Ordered choices and leaf provenance
+- Draft 2020-12 schema validation and type metadata
 - Atomic config updates
 - Bounded runtime results
 - Portable skills for four agent platforms
@@ -62,7 +62,7 @@ config = project.compose("config", overrides=["model=vgg", "optimizer.lr=0.01"])
 
 ### 1. Install
 
-Core Cobruh depends only on PyYAML:
+Core Cobruh depends on PyYAML and `jsonschema`:
 
 ```console
 pip install cobruh
@@ -147,18 +147,26 @@ Cobruh keeps the useful parts of hierarchical configuration and rejects the ambi
 
 | Capability | Syntax | Contract |
 |---|---|---|
-| Include config | `base` | Root-relative, recursive composition |
+| Relative or root include | `base`, `/base` | Relative to the containing source, or `config_root` with `/` |
 | Position current file | `_self_` | Current source merges at that exact point |
-| Select group | `model: resnet50` | Loads `model/resnet50.yaml` under `model` |
-| Replace value | `model.layers=101` | Existing dotted path only |
-| Add value | `+debug.enabled=true` | Missing path only |
-| Select option | `model=vgg` | Existing config group only |
+| Select group | `model: resnet50` | Relative group selection with an ordered choice record |
+| Optional placeholder | `optional cache: null` | Records an optional selection without loading a source |
+| Replace selection | `override model: large` | Removes the old option and every nested layer it owned |
+| Relocate selection | `model@primary: small` | Uses a dotted package; also supports `_here_`, `_group_`, `_global_` |
+| Replace/add/set value | `x=1`, `+x=1`, `++x=1` | Existing only, missing only, or either |
+| Delete value/group | `~x`, `~x=1`, `~model` | Delete, conditionally delete, or remove a selected group |
 | Reference config | `${model.layers}` | Exact tokens preserve the value type |
 | Read environment | `${env:NAME,default}` | Optional string fallback |
 
-Mappings deep-merge. Lists and scalars replace. Defaults and overrides apply left to right. Interpolation runs last.
+Mappings deep-merge. Lists and scalars replace. Defaults/group operations establish the source tree first; dotted mutations then apply left to right; interpolation runs last.
 
-Cobruh intentionally does not emulate plugin systems, multirun, ConfigStore, structured dataclasses, output-directory management, optional/null defaults, or override-default syntax.
+| Area | Cobruh and Hydra | Deliberately Hydra-only |
+|---|---|---|
+| Composition | Hierarchical defaults, `_self_`, relative/absolute groups, packages, optional/null/override entries | Config search paths, ConfigStore, structured dataclasses, OmegaConf containers and custom resolvers |
+| Overrides | Group selection plus typed replace/add/set/delete mutations | Sweeps, override functions, multirun grammar |
+| Inspection | Choices, sources, leaf provenance, schema types, validation | Hydra app help and shell tab completion |
+| Execution | Recursive target construction with an explicit allowlist | Decorators, launchers, sweepers, plugins, callbacks, rerun |
+| Runtime | Explicit object, plain dictionaries, no composition side effects | Automatic run directories, logging setup, job lifecycle |
 
 ## Targets without magic context
 
@@ -174,7 +182,15 @@ service:
 ```
 
 ```python
-service = project.instantiate(config["service"])
+runtime = Cobruh(
+    "configs",
+    project_root=".",
+    allowed_targets=(
+        "my_project.service.Service",
+        "my_project.client.Client",
+    ),
+)
+service = runtime.instantiate(config["service"])
 ```
 
 Target-bearing children instantiate recursively. `_partial_: true` returns `functools.partial`; `_recursive_: false` passes nested mappings unchanged. Explicit method arguments override configured arguments.
@@ -182,7 +198,7 @@ Target-bearing children instantiate recursively. `_partial_: true` returns `func
 Project-local imports work without permanently changing the process: Cobruh prepends `project_root` only during resolution and construction, then restores `sys.path`.
 
 > [!CAUTION]
-> Target instantiation executes configured Python code. Use it only with trusted configuration and explicit intent. The MCP runtime tool carries the same authority as its server process.
+> Instantiation is deny-by-default. Allow exact fully qualified targets or prefixes ending in `.*` through `allowed_targets` or trusted CLI process options. Cobruh checks the configured name before import and the callable's canonical identity before invocation; MCP calls and YAML cannot widen policy.
 
 ## Native experiment tracking
 
@@ -231,21 +247,21 @@ finally:
 
 ## Built for agentic configuration work
 
-A coding agent should not guess which files exist, overwrite concurrent changes, or execute targets just to understand a config. Cobruh gives it a purpose-built local protocol:
+A coding agent should not guess which files exist, overwrite concurrent changes, import targets just to understand configuration, or infer where a value came from. Cobruh gives it a purpose-built local protocol:
 
 ```text
-catalog → read + hash → write atomically → compose + verify → instantiate if intended
+catalog → read + hash → write atomically → inspect + validate → instantiate if authorized
 ```
 
 The MCP server exposes exactly five tools:
 
 | Tool | Purpose |
 |---|---|
-| `list_configs` | Discover root configs, groups, and options |
+| `list_configs` | Discover config and option records with exact YAML and schema paths |
 | `read_config_source` | Read UTF-8 YAML with its SHA-256 |
 | `write_config_source` | Create or hash-guardedly replace a source |
-| `compose_config` | Return composed data and ordered provenance |
-| `instantiate_config` | Execute an intended target and return a bounded result |
+| `compose_config` | Return focused data, choices, provenance, types, and validation |
+| `instantiate_config` | Execute an allowed target and return a bounded result |
 
 It also publishes `cobruh://catalog` and `cobruh://skills`, plus the `author_config` and `debug_config` prompts.
 
@@ -253,12 +269,14 @@ Source tools are rooted, extension-restricted, symlink-safe, size-bounded, mappi
 
 ## Connect your agent
 
-Start the default stdio server with absolute paths:
+Start the default stdio server with absolute paths and an explicit execution policy:
 
 ```console
 /absolute/project/.venv/bin/cobruh mcp \
   --root /absolute/project/configs \
-  --project-root /absolute/project
+  --project-root /absolute/project \
+  --schema config=schema.json \
+  --allow-target my_project.factories.*
 ```
 
 <details>
@@ -366,13 +384,14 @@ cobruh skills install --agent cursor --skill cobruh-config --force
 The CLI is the same project API exposed for scripts and humans:
 
 ```console
-cobruh catalog --root configs --project-root .
+cobruh catalog --root configs --project-root . --schema config=schema.json
 cobruh compose config --root configs --project-root . --set model=vgg optimizer.lr=0.01 --format json
+cobruh inspect config --root configs --project-root . --schema config=schema.json --node model
 cobruh compose config --root configs --no-resolve --format yaml
-cobruh instantiate config --root configs --project-root . --node service
+cobruh instantiate config --root configs --project-root . --allow-target my_project.Service --node service
 ```
 
-Machine output goes to stdout. Diagnostics go to stderr. Expected user and configuration failures return status 2. Runtime results include a fully qualified type, a `repr` bounded to 4096 characters, and a `value` only when JSON serialization succeeds.
+Repeat `--schema NAME=PATH` on any project command. Repeat `--allow-target TARGET` only on trusted `instantiate` and `mcp` processes. Machine output goes to stdout. Diagnostics go to stderr. Expected user and configuration failures return status 2. Runtime results include a fully qualified type, a `repr` bounded to 4096 characters, and a `value` only when JSON serialization succeeds.
 
 ## Configuration reference
 
@@ -393,25 +412,37 @@ Machine output goes to stdout. Diagnostics go to stderr. Expected user and confi
 <details>
 <summary><strong>Defaults</strong></summary>
 
-A defaults entry is `_self_`, a root-relative config string, or a one-key group mapping:
+Defaults accept `_self_`; relative or `/` root config includes; and one-key `group`, `optional group`, or `override group` mappings. Options may be strings, null placeholders, or lists merged left to right:
 
 ```yaml
 defaults:
-  - base
+  - /base
+  - model@primary: small
+  - augment: [crop, flip]
+  - optional cache: null
+  - override model@primary: large
   - _self_
-  - model: resnet50
 ```
 
-Entries compose left to right. `_self_` inserts the current source at that position; an omitted `_self_` means current-file-last. Group selections nest under their group key. Includes may define defaults recursively.
+Unprefixed includes and groups resolve relative to the containing source directory. `_self_` inserts that source at its listed position; omission means current-file-last. The default destination follows the selected group. `@package` relocates content; `_here_`, `_group_`, and `_global_` select the containing, absolute-group, or root package. Packages exist only in defaults entries—YAML comment directives are not interpreted.
 
 </details>
 
 <details>
 <summary><strong>Overrides and interpolation</strong></summary>
 
-`path=value` replaces, `+path=value` creates, and `group=option` selects. Values use `yaml.safe_load`, and overrides are sequential.
+`path=value` replaces an existing path; `+path=value` adds a missing path; `++path=value` creates or replaces; `~path` deletes; and `~path=value` deletes only on equality. `group=option`, `+group=option`, and `~group` replace, add, or remove source selections, with optional `group@package`. An empty right-hand side is the empty string. Comma-separated group choices and override functions require Hydra.
 
-Supported interpolation is `${path.to.value}`, `${env:NAME}`, and `${env:NAME,default}`. Exact config references preserve scalar, list, and mapping types; embedded expressions stringify. `compose(resolve=False)` leaves expressions unchanged. Missing values and cycles are errors with their full key chain.
+All group operations run before dotted value mutations, which then run left to right. Supported interpolation is `${path.to.value}`, `${env:NAME}`, and `${env:NAME,default}`. Exact config references preserve scalar, list, and mapping types; embedded expressions stringify. `resolve=False` leaves expressions unchanged and skips schema validation.
+
+</details>
+
+<details>
+<summary><strong>Schemas and inspection</strong></summary>
+
+Register schemas with `Cobruh(..., schemas={"config": "schema.json"})` or CLI `--schema NAME=PATH`. Cobruh accepts Draft 2020-12 mapping schemas from memory or project-contained UTF-8 `.json` files up to 1 MiB. Only local `#...` references are allowed. Resolved compositions validate automatically with deterministic RFC 6901 instance and schema pointers.
+
+`Cobruh.inspect(name, overrides=(), resolve=True, node="")` returns exactly `name`, `node`, `data`, `sources`, `choices`, `provenance`, `types`, and `validation`. Focused inspection accepts scalar, list, or mapping values and rebases provenance and type pointers to `""`. `catalog()` returns config/option records with `name`, exact `path`, and schema source.
 
 </details>
 
@@ -423,7 +454,7 @@ Supported interpolation is `${path.to.value}`, `${env:NAME}`, and `${env:NAME,de
 - `_partial_`: optional boolean, false by default
 - `_recursive_`: optional boolean, true by default
 
-Reserved fields never reach the constructor. Explicit positional arguments replace `_args_`; explicit keywords override configured values. Resolution, signature, and construction failures raise `TargetError` with target and nested config paths while preserving the cause.
+`allowed_targets` defaults to empty. Rules are exact fully qualified targets or prefixes ending in `.*`; empty entries and bare `*` are invalid. Short configured builtins normalize to `builtins.<name>`. Both the configured and resolved canonical identities must match policy. Reserved fields never reach the constructor. Explicit positional arguments replace `_args_`; explicit keywords override configured values.
 
 </details>
 

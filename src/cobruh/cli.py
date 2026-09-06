@@ -37,6 +37,13 @@ def build_parser() -> argparse.ArgumentParser:
     compose_parser.add_argument("--no-resolve", action="store_true")
     compose_parser.add_argument("--format", choices=("yaml", "json"), default="yaml")
 
+    inspect_parser = subparsers.add_parser("inspect", help="Inspect composed data and metadata")
+    inspect_parser.add_argument("name", nargs="?", default="config")
+    _add_project_arguments(inspect_parser)
+    _add_override_arguments(inspect_parser)
+    inspect_parser.add_argument("--no-resolve", action="store_true")
+    inspect_parser.add_argument("--node", default="")
+
     instantiate_parser = subparsers.add_parser(
         "instantiate", help="Compose and instantiate a target mapping"
     )
@@ -44,9 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
     _add_project_arguments(instantiate_parser)
     _add_override_arguments(instantiate_parser)
     instantiate_parser.add_argument("--node", default="")
+    instantiate_parser.add_argument("--allow-target", action="append", default=[])
 
     mcp_parser = subparsers.add_parser("mcp", help="Run the trusted local MCP server")
     _add_project_arguments(mcp_parser)
+    mcp_parser.add_argument("--allow-target", action="append", default=[])
     mcp_parser.add_argument("--transport", choices=("stdio", "streamable-http"), default="stdio")
     mcp_parser.add_argument("--host", default="127.0.0.1")
     mcp_parser.add_argument("--port", type=int, default=8000)
@@ -97,7 +106,7 @@ def _dispatch(arguments: argparse.Namespace) -> int:
         print(json.dumps({"installed": installed}, indent=2, sort_keys=True))
         return 0
 
-    project = Cobruh(arguments.root, project_root=arguments.project_root)
+    project = _build_project(arguments)
     if arguments.command == "catalog":
         print(json.dumps(project.catalog(), indent=2, sort_keys=True))
         return 0
@@ -112,6 +121,15 @@ def _dispatch(arguments: argparse.Namespace) -> int:
         else:
             print(yaml.safe_dump(data, sort_keys=False), end="")
         return 0
+    if arguments.command == "inspect":
+        inspected = project.inspect(
+            arguments.name,
+            overrides=arguments.overrides,
+            resolve=not arguments.no_resolve,
+            node=arguments.node,
+        )
+        print(json.dumps(inspected, indent=2, sort_keys=True))
+        return 0
     if arguments.command == "instantiate":
         data = project.compose(arguments.name, overrides=arguments.overrides)
         result = project.instantiate(select_mapping(data, arguments.node))
@@ -120,6 +138,23 @@ def _dispatch(arguments: argparse.Namespace) -> int:
     if arguments.command == "mcp":
         return _run_mcp(project, arguments)
     raise ValueError(f"Unknown command '{arguments.command}'")
+
+
+def _build_project(arguments: argparse.Namespace) -> Cobruh:
+    schemas: dict[str, Path] = {}
+    for expression in arguments.schema:
+        name, separator, raw_path = expression.partition("=")
+        if not separator or not name or not raw_path:
+            raise ValueError(f"Invalid schema registration '{expression}': expected NAME=PATH")
+        if name in schemas:
+            raise ValueError(f"Duplicate schema registration for '{name}'")
+        schemas[name] = Path(raw_path)
+    return Cobruh(
+        arguments.root,
+        project_root=arguments.project_root,
+        schemas=schemas,
+        allowed_targets=getattr(arguments, "allow_target", ()),
+    )
 
 
 def _run_mcp(project: Cobruh, arguments: argparse.Namespace) -> int:
@@ -149,6 +184,7 @@ def _run_mcp(project: Cobruh, arguments: argparse.Namespace) -> int:
 def _add_project_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--project-root", type=Path, default=None)
+    parser.add_argument("--schema", action="append", default=[], metavar="NAME=PATH")
 
 
 def _add_override_arguments(parser: argparse.ArgumentParser) -> None:

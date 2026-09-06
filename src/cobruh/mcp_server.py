@@ -18,10 +18,10 @@ from cobruh.composition import MAX_SOURCE_BYTES
 from cobruh.errors import ConfigError
 
 _SERVER_INSTRUCTIONS = """Cobruh manages configuration for a trusted local project.
-This server can write project configuration and instantiate arbitrary Python targets.
-Instantiation executes repository code with the server process's authority. Catalog and
-read before editing, use expected SHA-256 hashes for replacements, compose after writes,
-and instantiate only when the user explicitly intends target code to execute.
+This server can inspect schemas, provenance, choices, and focused composed values; write
+project configuration; and instantiate explicitly allowed Python targets. Catalog and read
+before editing, use expected SHA-256 hashes for replacements, inspect after writes, and
+instantiate only when the user explicitly intends authorized target code to execute.
 """
 
 
@@ -81,17 +81,20 @@ def create_server(project: Cobruh) -> MCPServer:
     @server.tool()
     def compose_config(
         name: str = "config",
+        node: str = "",
         overrides: list[str] | None = None,
-        resolve: bool = False,
+        resolve: bool = True,
     ) -> dict[str, Any]:
-        """Compose a config with ordered source provenance."""
+        """Inspect composed data, choices, provenance, types, and validation."""
         try:
-            result = project._compose_result(
-                name,
-                overrides=overrides or (),
-                resolve=resolve,
+            return _ok(
+                **project.inspect(
+                    name,
+                    node=node,
+                    overrides=overrides or (),
+                    resolve=resolve,
+                )
             )
-            return _ok(data=result.data, sources=list(result.sources))
         except Exception as exc:
             return _failure(exc)
 
@@ -131,8 +134,9 @@ def create_server(project: Cobruh) -> MCPServer:
             f"Author Cobruh configuration '{config_name}' for this goal: {goal}\n\n"
             "Call list_configs first. Read every source you plan to change and retain its "
             "SHA-256. Use write_config_source with expected_sha256 for replacements (omit it "
-            "only for creation), then call compose_config to verify the result. Call "
-            "instantiate_config only if the user intends repository target code to execute."
+            "only for creation), then call compose_config to inspect validation, choices, and "
+            "provenance. Call instantiate_config only if the user intends authorized target "
+            "code to execute."
         )
 
     @server.prompt()
@@ -140,10 +144,11 @@ def create_server(project: Cobruh) -> MCPServer:
         """Diagnose a Cobruh error using sources and deterministic composition."""
         return (
             f"Debug Cobruh configuration '{config_name}' reporting: {error}\n\n"
-            "Call list_configs and compose_config before editing. Read implicated sources and "
-            "retain their SHA-256 values. Make replacements only with hash-guarded "
-            "write_config_source, compose again after each change, and call instantiate_config "
-            "only if the user intends repository target code to execute."
+            "Call list_configs and compose_config before editing; inspect focused nodes and "
+            "their provenance and schema types. Read implicated sources and retain their "
+            "SHA-256 values. Make replacements only with hash-guarded write_config_source, "
+            "compose again after each change, and call instantiate_config only if the user "
+            "intends authorized target code to execute."
         )
 
     return server

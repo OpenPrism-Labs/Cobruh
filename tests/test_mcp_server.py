@@ -43,6 +43,7 @@ def test_exact_capabilities_and_generated_schemas(tmp_path: Path) -> None:
             assert schemas["write_config_source"]["required"] == ["path", "content"]
             assert set(schemas["compose_config"]["properties"]) == {
                 "name",
+                "node",
                 "overrides",
                 "resolve",
             }
@@ -105,8 +106,29 @@ def test_read_hash_write_conflict_and_compose_provenance(tmp_path: Path) -> None
             composed = await client.call_tool("compose_config", {"name": "config"})
             assert composed.structured_content == {
                 "ok": True,
+                "name": "config",
+                "node": "",
                 "data": {"model": {"width": 8}, "value": 1},
                 "sources": ["model/small.yaml", "config.yaml"],
+                "choices": [
+                    {
+                        "group": "model",
+                        "option": "small",
+                        "package": "model",
+                        "declared_by": "config.yaml",
+                    }
+                ],
+                "provenance": {
+                    "/model/width": {"kind": "source", "path": "model/small.yaml"},
+                    "/value": {"kind": "source", "path": "config.yaml"},
+                },
+                "types": {
+                    "": {"source": "inferred", "type": "object"},
+                    "/model": {"source": "inferred", "type": "object"},
+                    "/model/width": {"source": "inferred", "type": "integer"},
+                    "/value": {"source": "inferred", "type": "integer"},
+                },
+                "validation": {"status": "not_configured"},
             }
 
     _run(scenario())
@@ -155,7 +177,7 @@ def test_source_tools_reject_unsafe_inputs_without_mutation(tmp_path: Path) -> N
     _run(scenario())
 
 
-def test_project_target_execution_and_result_serialization(tmp_path: Path) -> None:
+def test_focused_compose_metadata_and_target_policy(tmp_path: Path) -> None:
     async def scenario() -> None:
         config_root = tmp_path / "configs"
         config_root.mkdir()
@@ -168,6 +190,36 @@ def test_project_target_execution_and_result_serialization(tmp_path: Path) -> No
             encoding="utf-8",
         )
         async with Client(create_server(Cobruh(config_root, project_root=tmp_path))) as client:
+            denied = await client.call_tool(
+                "instantiate_config",
+                {"name": "config", "node": "job"},
+            )
+            assert denied.structured_content["ok"] is False
+            assert denied.structured_content["error"]["type"] == "TargetError"
+
+        async with Client(
+            create_server(
+                Cobruh(
+                    config_root,
+                    project_root=tmp_path,
+                    allowed_targets=("target_module.build",),
+                )
+            )
+        ) as client:
+            composed = await client.call_tool(
+                "compose_config",
+                {"name": "config", "node": "job"},
+            )
+            assert composed.structured_content["ok"] is True
+            assert composed.structured_content["node"] == "job"
+            assert composed.structured_content["data"] == {
+                "_target_": "target_module.build",
+                "value": 7,
+            }
+            assert composed.structured_content["provenance"]["/value"] == {
+                "kind": "source",
+                "path": "config.yaml",
+            }
             result = await client.call_tool("instantiate_config", {"name": "config", "node": "job"})
             assert result.structured_content == {
                 "ok": True,

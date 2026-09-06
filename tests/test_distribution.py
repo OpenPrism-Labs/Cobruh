@@ -62,6 +62,7 @@ def test_wheel_contains_runtime_modules_typing_and_all_skills(tmp_path: Path) ->
         assert "cobruh/py.typed" in names
         assert "cobruh/project.py" in names
         assert "cobruh/composition.py" in names
+        assert "cobruh/validation.py" in names
         assert "cobruh/runtime.py" in names
         assert "cobruh/tracking.py" in names
         assert "cobruh/cli.py" in names
@@ -74,6 +75,7 @@ def test_wheel_contains_runtime_modules_typing_and_all_skills(tmp_path: Path) ->
         assert "Version: 0.2.0" in metadata
         assert "Requires-Python: <3.15,>=3.10" in metadata
         assert "Requires-Dist: PyYAML<7,>=6.0.3" in metadata
+        assert "Requires-Dist: jsonschema<5,>=4.26" in metadata
         assert 'Requires-Dist: mcp<3,>=2; extra == "agentic"' in metadata
         assert 'Requires-Dist: wandb<1,>=0.19; extra == "wandb"' in metadata
         assert 'Requires-Dist: aim<4,>=3.29; python_version < "3.13" and extra == "aim"' in metadata

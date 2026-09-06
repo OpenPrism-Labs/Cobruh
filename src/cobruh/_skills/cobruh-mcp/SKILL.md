@@ -1,12 +1,12 @@
 ---
 name: cobruh-mcp
-description: Install, launch, register, discover, and troubleshoot the Cobruh trusted local MCP server and bundled skills for Codex, Claude Code, GitHub Copilot, or Cursor.
+description: Install, launch, register, inspect, and troubleshoot the Cobruh trusted local MCP server and bundled skills for Codex, Claude Code, GitHub Copilot, or Cursor.
 license: MIT
 ---
 
 # Cobruh MCP
 
-Use this skill when connecting a coding agent to Cobruh or when its tools, resources, prompts, or bundled skills are unavailable.
+Use this skill when connecting a coding agent to Cobruh or when its tools, resources, prompts, schemas, or target policy are unavailable.
 
 ## Install and launch
 
@@ -14,50 +14,48 @@ Install the optional SDK adapter:
 
 ```console
 pip install 'cobruh[agentic]'
-cobruh mcp --root /absolute/project/configs --project-root /absolute/project
+cobruh mcp \
+  --root /absolute/project/configs \
+  --project-root /absolute/project \
+  --schema config=schema.json \
+  --allow-target my_project.factories.*
 ```
 
-The default transport is stdio. Configure the host with the absolute path to the `cobruh` executable and absolute root arguments. The server must write no ordinary output before the stdio transport starts.
+`--schema NAME=PATH` and `--allow-target TARGET` are repeatable trusted-process settings. Target policy is never accepted from MCP calls or YAML. Omit all allow rules to deny every target.
+
+The default transport is stdio. Configure the host with the absolute path to `cobruh` and absolute root arguments. The server must write no ordinary output before stdio starts.
 
 Streamable HTTP is optional and loopback-only:
 
 ```console
-cobruh mcp --root /absolute/project/configs --project-root /absolute/project --transport streamable-http --host 127.0.0.1 --port 8000
+cobruh mcp --root /absolute/project/configs --project-root /absolute/project \
+  --allow-target my_project.factories.* \
+  --transport streamable-http --host 127.0.0.1 --port 8000
 ```
 
-The endpoint is `http://127.0.0.1:8000/mcp`. Cobruh rejects non-loopback hosts because the server is unauthenticated and runtime instantiation executes code.
+The endpoint is `http://127.0.0.1:8000/mcp`. Cobruh rejects non-loopback hosts because the server is unauthenticated and authorized runtime instantiation executes code.
 
 ## Discoverable surface
 
 Tools:
 
-- `list_configs`
-- `read_config_source`
-- `write_config_source`
-- `compose_config`
-- `instantiate_config`
+- `list_configs`: config and option records with exact source and schema paths.
+- `read_config_source`: UTF-8 YAML plus its SHA-256.
+- `write_config_source`: atomic creation or hash-guarded replacement.
+- `compose_config`: focused inspection metadata; `resolve` defaults to true and `node` is optional.
+- `instantiate_config`: executes only targets allowed when the server process started.
 
-Resources:
+Resources are `cobruh://catalog` and `cobruh://skills`. Prompts are `author_config` and `debug_config`. The five tool names remain fixed.
 
-- `cobruh://catalog`
-- `cobruh://skills`
-
-Prompts:
-
-- `author_config`
-- `debug_config`
-
-Prefer these MCP tools over shell or direct file edits. Catalog and read first. Supply the current SHA-256 for replacements, compose after writes, and instantiate only when the user intends trusted repository code to execute. If MCP is unavailable, fall back to `cobruh catalog`, `cobruh compose`, and `cobruh instantiate`.
+Prefer these tools over shell or direct edits. Catalog and read first. Supply the current SHA-256 for replacements. After writes, call `compose_config` and verify `data`, `sources`, `choices`, rebased leaf `provenance`, `types`, and `validation`. Instantiate only with explicit user intent; a tool call cannot widen the server allowlist.
 
 ## Install bundled skills
-
-List and install:
 
 ```console
 cobruh skills list
 cobruh skills install --agent codex --scope project --project /absolute/project
 ```
 
-Agents are `codex`, `claude`, `copilot`, `cursor`, or `all`. Scope defaults to `project`. Use repeated `--skill` options to filter. Identical installations are no-ops; differing content fails unless `--force` is supplied.
+Agents are `codex`, `claude`, `copilot`, `cursor`, or `all`. Scope defaults to `project`. Repeat `--skill` to filter. Identical installations are no-ops; differing content fails unless `--force` is supplied.
 
-If installation fails, check destination parent symlinks, file permissions, conflicting content, the selected skill name, and whether `--scope user` points at the intended home directory.
+If installation fails, check destination parent symlinks, permissions, conflicting content, selected skill names, and whether `--scope user` points at the intended home directory.

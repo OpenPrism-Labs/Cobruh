@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Added optional native W&B and Aim experiment-tracking integrations for composed configurations.
+- Added advanced defaults and packages, two-stage overrides, JSON Schema validation, focused inspection metadata, richer discovery records, and deny-by-default target allowlists.
 
 ## 0.2.0
 

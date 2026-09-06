@@ -9,8 +9,8 @@ from typing import Any
 from cobruh.errors import ConfigError
 
 
-def select_mapping(data: Mapping[str, Any], node: str) -> Mapping[str, Any]:
-    """Select a dotted mapping node from composed data."""
+def select_value(data: Mapping[str, Any], node: str) -> Any:
+    """Select any value at a dotted path from composed data."""
     if not node:
         return data
     cursor: Any = data
@@ -22,9 +22,15 @@ def select_mapping(data: Mapping[str, Any], node: str) -> Mapping[str, Any]:
         if not isinstance(cursor, Mapping) or part not in cursor:
             raise ConfigError(f"Node path '{node}' does not exist at '{'.'.join(traversed)}'")
         cursor = cursor[part]
-    if not isinstance(cursor, Mapping):
-        raise ConfigError(f"Node path '{node}' must select a mapping")
     return cursor
+
+
+def select_mapping(data: Mapping[str, Any], node: str) -> Mapping[str, Any]:
+    """Select a dotted node and require a runtime target mapping."""
+    selected = select_value(data, node)
+    if not isinstance(selected, Mapping):
+        raise ConfigError(f"Node path '{node}' must select a mapping")
+    return selected
 
 
 def result_envelope(result: Any) -> dict[str, Any]:

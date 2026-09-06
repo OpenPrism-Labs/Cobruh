@@ -26,7 +26,7 @@ def test_catalog_and_compose_output(
     )
     assert status == 0
     catalog = json.loads(capsys.readouterr().out)
-    assert catalog["groups"]["model"] == ["resnet50", "vgg"]
+    assert [option["name"] for option in catalog["groups"]["model"]] == ["resnet50", "vgg"]
 
     status = main(
         [
@@ -68,6 +68,61 @@ def test_compose_no_resolve_yaml(
     assert output.err == ""
 
 
+def test_inspect_outputs_focused_validated_metadata(
+    project_tree: tuple[object, Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, project_root, config_root = project_tree
+    schema = project_root / "schema.json"
+    schema.write_text(
+        json.dumps(
+            {
+                "type": "object",
+                "required": ["model"],
+                "properties": {
+                    "model": {
+                        "type": "object",
+                        "required": ["layers"],
+                        "properties": {"layers": {"type": "integer"}},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    status = main(
+        [
+            "inspect",
+            "config",
+            "--root",
+            str(config_root),
+            "--project-root",
+            str(project_root),
+            "--schema",
+            "config=schema.json",
+            "--set",
+            "model=vgg",
+            "--node",
+            "model",
+        ]
+    )
+    output = capsys.readouterr()
+    assert status == 0
+    assert output.err == ""
+    inspected = json.loads(output.out)
+    assert inspected["data"] == {"name": "vgg", "layers": 16}
+    assert inspected["choices"][0]["option"] == "vgg"
+    assert inspected["provenance"]["/layers"] == {
+        "kind": "source",
+        "path": "model/vgg.yml",
+    }
+    assert inspected["types"]["/layers"] == {
+        "source": "schema",
+        "required": True,
+        "schema": {"type": "integer"},
+    }
+    assert inspected["validation"] == {"status": "valid", "schema": "schema.json"}
+
+
 def test_instantiate_prints_bounded_result_envelope(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -84,6 +139,8 @@ def test_instantiate_prints_bounded_result_envelope(
             str(config_root),
             "--project-root",
             str(tmp_path),
+            "--allow-target",
+            "builtins.dict",
             "--node",
             "target",
         ]
